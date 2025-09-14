@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Hallucination Detector</title>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    textarea { width: 100%; height: 120px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 10px; }
+    th { background: #f4f4f4; }
+  </style>
+</head>
+<body>
+  <h2>Hallucination Detection & Fact Verification</h2>
+  <form method="post">
+    <textarea name="user_text" placeholder="Paste AI-generated text here..."></textarea><br><br>
+    <button type="submit">Check</button>
+  </form>
+
+  {% if results %}
+  <h3>Results:</h3>
+  <table>
+    <tr><th>Claim</th><th>Status</th><th>Retrieved Fact</th></tr>
+    {% for claim, status, fact in results %}
+    <tr>
+      <td>{{ claim }}</td>
+      <td>{{ status }}</td>
+      <td>{{ fact }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</body>
+</html>

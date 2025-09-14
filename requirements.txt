@@ -1,0 +1,5 @@
+flask
+spacy
+transformers
+torch
+wikipedia
