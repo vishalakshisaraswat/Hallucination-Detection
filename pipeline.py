@@ -2,11 +2,14 @@ import spacy
 import wikipedia
 from transformers import pipeline
 
-# Load NLP model
+# Load SpaCy NLP model
 nlp = spacy.load("en_core_web_sm")
 
-# Load NLI model for factual verification
-nli_model = pipeline("text-classification", model="facebook/bart-large-mnli")
+# NLI model (commonsense-aware)
+nli_model = pipeline("text-classification", model="roberta-large-mnli")
+
+# Text-to-text reasoning model (for generating corrections or explanations)
+reasoning_model = pipeline("text2text-generation", model="google/flan-t5-large")
 
 
 def extract_claims(text):
@@ -16,16 +19,12 @@ def extract_claims(text):
 
 
 def retrieve_fact(claim):
-    """Fetch relevant fact from Wikipedia using named entities or main nouns."""
+    """Try to get relevant fact from Wikipedia, if applicable."""
     doc = nlp(claim)
-    # Try named entities first (person, place, org, etc.)
     entities = [ent.text for ent in doc.ents if ent.label_ in ["PERSON", "ORG", "GPE", "EVENT", "WORK_OF_ART"]]
-
-    # Fallback: use main noun chunk if no entity found
     if not entities:
         entities = [chunk.text for chunk in doc.noun_chunks][:1]
 
-    # Try fetching Wikipedia summary for each candidate
     for ent in entities:
         try:
             summary = wikipedia.summary(ent, sentences=2, auto_suggest=False)
@@ -35,21 +34,31 @@ def retrieve_fact(claim):
     return None
 
 
-def verify_claim(claim, fact):
-    """Check if claim is supported, contradicted, or unverifiable."""
-    if not fact:
-        return "Not Verifiable ⚠️"
+def generate_correction(claim):
+    """
+    Use the reasoning model (FLAN-T5) to generate the most likely true version
+    of the claim when a contradiction is detected and no factual data is available.
+    """
+    prompt = f"The statement '{claim}' seems false. Suggest a more factually correct version."
+    result = reasoning_model(prompt, max_new_tokens=50)[0]['generated_text']
+    return result.strip()
 
-    # Run NLI model (premise=fact, hypothesis=claim)
-    result = nli_model(fact, text_pair=claim, truncation=True)[0]
+
+def verify_claim(claim, fact=None):
+    """Combine factual verification + commonsense correction without hardcoding."""
+    premise = fact if fact else "Common sense knowledge about the world."
+    result = nli_model(premise, text_pair=claim, truncation=True)[0]
     label = result["label"].upper()
 
     if "ENTAILMENT" in label:
-        return "TRUE ✅"
+        return "TRUE ✅", fact
     elif "CONTRADICTION" in label:
-        return "FALSE ❌"
+        if not fact:
+            correction = generate_correction(claim)
+            return "FALSE ❌", correction
+        return "FALSE ❌", fact
     else:
-        return "Not Verifiable ⚠️"
+        return "Not Verifiable ⚠️", fact
 
 
 def check_text(text):
@@ -59,7 +68,7 @@ def check_text(text):
 
     for claim in claims:
         fact = retrieve_fact(claim)
-        status = verify_claim(claim, fact)
-        results.append((claim, status, fact))
+        status, fact_or_correction = verify_claim(claim, fact)
+        results.append((claim, status, fact_or_correction if fact_or_correction else "—"))
 
     return results
